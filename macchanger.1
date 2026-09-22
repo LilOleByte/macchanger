@@ -13,7 +13,7 @@
 .\" along with this program; see the file COPYING.  If not, write to
 .\" the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
 .\"
-.TH MACCHANGER 1 "April 10, 2013"
+.TH MACCHANGER 1 "September 21, 2026"
 .\" Please update the above date whenever this man page is modified.
 .\"
 .\" Some roff macros, for reference:
@@ -52,7 +52,9 @@ Prints the current MAC. This is the default action when no other option is speci
 Don't change the vendor bytes.
 .TP
 .B \-a, \-\-another
-Set random vendor MAC of the same kind.
+Set a random vendor MAC of the same kind. A wireless interface, detected
+from sysfs, gets another wireless vendor. Any other interface gets a
+non-wireless vendor.
 .TP
 .B \-A
 Set random vendor MAC of any kind.
@@ -64,18 +66,53 @@ Set fully random MAC.
 Reset MAC address to its original, permanent hardware value.
 .TP
 .B \-l, \-\-list[=keyword]
-Print known vendors (with keyword in the vendor's description string).
+Print known vendors. The keyword matches a whole word in the vendor
+description, ignoring case, so
+.I Intel
+does not match
+.IR Intelligent .
+It may be written as
+.BR \-\-list=keyword ,
+.BR \-\-list\ keyword ,
+or
+.BR \-l keyword .
 .TP
 .B \-b, \-\-bia
-When setting fully random MAC pretend to be a burned-in-address. If not used,
-the MAC will have the locally-administered bit set.
+When setting a fully random MAC, pretend to be a burned-in address. Without
+this option the MAC has the locally administered bit set.
 .TP
 .B \-m, \-\-mac XX:XX:XX:XX:XX:XX, \-\-mac=XX:XX:XX:XX:XX:XX
-Set the MAC XX:XX:XX:XX:XX:XX.
+Set the MAC XX:XX:XX:XX:XX:XX. Dashes may be used instead of colons, and a
+12-digit hexadecimal string is also accepted. Asking for the address the
+interface already has succeeds without changing it. Multicast addresses are refused.
+.SH NOTES
+Some drivers accept a new address only while the interface is down. When
+the kernel reports that the device is busy,
+.B macchanger
+brings the interface down, applies the address, and restores its previous
+administrative state. It then reads the address back. If the driver
+ignored the request, the command prints an error and exits non-zero.
+.PP
+A program that manages the interface, commonly NetworkManager, may restore
+the permanent address when the interface comes back up. To keep a chosen
+address, set the connection's cloned MAC address or do not let that program
+manage the device.
+.PP
+.B \-\-random
+produces a unicast address with the locally administered bit set.
+.B \-\-bia
+clears that bit. Neither form is drawn from the vendor list;
+.B \-a
+and
+.B \-A
+are.
 .SH EXAMPLE
 macchanger \-A eth1
 .SH "SEE ALSO"
-ifconfig (8)
+ip (8),
+ip-link (8),
+ethtool (8)
 .\" .BR foo (1),
 .SH AUTHOR
 Alvaro Lopez Ortega <alvaro@alobbs.com>.
+Updates: byte@jvmlab.org.

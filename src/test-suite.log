@@ -1,0 +1,25 @@
+==========================================
+   macchanger 1.8.0: src/test-suite.log
+==========================================
+
+# TOTAL: 2
+# PASS:  2
+# SKIP:  0
+# XFAIL: 0
+# FAIL:  0
+# XPASS: 0
+# ERROR: 0
+
+System information (uname -a): Linux 6.12.0-160000.37-default #1 SMP PREEMPT_DYNAMIC Thu Aug 6 15:43:26 UTC 2026 (cf8ec7a) x86_64 x86_64 x86_64
+Distribution information (/etc/os-release):
+NAME="openSUSE Leap"
+VERSION="16.0"
+ID="opensuse-leap"
+ID_LIKE="suse opensuse"
+VERSION_ID="16.0"
+PRETTY_NAME="openSUSE Leap 16.0"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:opensuse:leap:16.0"
+
+.. contents:: :depth: 2
+

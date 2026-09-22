@@ -1,17 +1,20 @@
-AC_INIT([macchanger], [1.7.0])
+AC_INIT([macchanger], [1.8.0])
 AC_CONFIG_SRCDIR([src/main.c])
-AM_INIT_AUTOMAKE
+AC_CONFIG_HEADERS([config.h])
+AM_INIT_AUTOMAKE([foreign])
 
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
-AM_CONFIG_HEADER(config.h)
-AC_SUBST(VERSION)
-
-AC_PROG_INSTALL
+AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_CC
+AC_PROG_INSTALL
 
-AC_OUTPUT([
+AC_CHECK_HEADERS([sys/random.h])
+AC_CHECK_FUNCS([getrandom])
+
+AC_CONFIG_FILES([
 Makefile
 src/Makefile
 data/Makefile
 doc/Makefile])
+AC_OUTPUT

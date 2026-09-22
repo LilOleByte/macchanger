@@ -28,12 +28,10 @@
 #endif
 
 #include <sys/types.h>
-#include <sys/uio.h>
-#include <sys/time.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
-#include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "mac.h"
@@ -58,8 +56,10 @@ print_help (void)
 		"  -r,  --random                 Set fully random MAC\n"
 		"  -l,  --list[=keyword]         Print known vendors\n"
 		"  -b,  --bia                    Pretend to be a burned-in-address\n"
-		"  -m,  --mac=XX:XX:XX:XX:XX:XX  Set the MAC XX:XX:XX:XX:XX:XX\n\n"
-		"Report bugs to https://github.com/alobbs/macchanger/issues\n");
+		"  -m,  --mac=XX:XX:XX:XX:XX:XX\n"
+		"       --mac XX:XX:XX:XX:XX:XX  Set the MAC XX:XX:XX:XX:XX:XX\n\n"
+		"Report bugs to https://github.com/alobbs/macchanger/issues\n"
+		"Updates: byte@jvmlab.org\n");
 }
 
 
@@ -73,39 +73,27 @@ print_usage (void)
 
 
 static void
-print_mac (const char *s, const mac_t *mac)
+print_mac (const char *s, const mac_t *mac, int iface_wireless)
 {
 	char string[18];
 	int  is_wireless;
 
-	is_wireless = mc_maclist_is_wireless(mac);
+	is_wireless = iface_wireless || mc_maclist_is_wireless(mac);
 	mc_mac_into_string (mac, string);
 	printf ("%s%s%s (%s)\n", s,
 		string,
 		is_wireless ? " [wireless]": "",
 		CARD_NAME(mac));
+	fflush (stdout);
 }
 
 
-static void
-random_seed (void)
+static int
+change_mode_count (char random, char ending, char another_any, char another_same,
+		   char permanent, const char *set_mac)
 {
-	int            fd;
-	struct timeval tv;
-	unsigned int   seed;
-
-	if ((fd = open("/dev/hwrng", O_RDONLY)) >= 0 ||
-	    (fd = open("/dev/random", O_RDONLY)) >= 0 ||
-	    (fd = open("/dev/urandom", O_RDONLY)) >= 0)
-	{
-		read (fd, &seed, sizeof(seed));
-		close (fd);
-	} else {
-		gettimeofday (&tv, NULL);
-		seed = (getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec;
-	}
-
-	srandom(seed);
+	return (random ? 1 : 0) + (ending ? 1 : 0) + (another_any ? 1 : 0) +
+	       (another_same ? 1 : 0) + (permanent ? 1 : 0) + (set_mac ? 1 : 0);
 }
 
 
@@ -120,11 +108,11 @@ main (int argc, char *argv[])
 	char print_list   = 0;
 	char show         = 0;
 	char set_bia      = 0;
+	char explicit_same_ok = 0;
 	char *set_mac     = NULL;
 	char *search_word = NULL;
 
 	struct option long_options[] = {
-		/* Options without arguments */
 		{"help",        no_argument,       NULL, 'h'},
 		{"version",     no_argument,       NULL, 'V'},
 		{"random",      no_argument,       NULL, 'r'},
@@ -140,29 +128,34 @@ main (int argc, char *argv[])
 		{NULL, 0, NULL, 0}
 	};
 
-	net_info_t *net;
-	mac_t      *mac;
-	mac_t      *mac_permanent;
-	mac_t      *mac_faked;
+	net_info_t *net = NULL;
+	mac_t      *mac = NULL;
+	mac_t      *mac_permanent = NULL;
+	mac_t      *mac_faked = NULL;
+	mac_t      *mac_now = NULL;
 	char       *device_name;
 	int         val;
-	int         ret;
+	int         ret = EXIT_ERROR;
+	int         modes;
+	int         iface_wireless = 0;
 
-	/* Read the parameters */
-	while ((val = getopt_long (argc, argv, "VasAbrephlm:", long_options, NULL)) != -1) {
+	while ((val = getopt_long (argc, argv, "VasAbrephl::m:", long_options, NULL)) != -1) {
 		switch (val) {
 		case 'V':
 			printf ("GNU MAC changer %s\n"
 				"Written by Alvaro Lopez Ortega <alvaro@gnu.org>\n\n"
-				"Copyright (C) 2003,2013 Alvaro Lopez Ortega <alvaro@gnu.org>.\n"
+				"Copyright (C) 2003-2026 Alvaro Lopez Ortega <alvaro@gnu.org>.\n"
 				"This is free software; see the source for copying conditions.  There is NO\n"
-				"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n",
+				"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"
+				"Updates: byte@jvmlab.org\n",
 				VERSION);
-			exit (EXIT_OK);
-			break;
+			return EXIT_OK;
 		case 'l':
 			print_list = 1;
-			search_word = optarg;
+			if (optarg)
+				search_word = optarg;
+			else if (optind < argc && argv[optind][0] != '-')
+				search_word = argv[optind++];
 			break;
 		case 'r':
 			random = 1;
@@ -189,99 +182,120 @@ main (int argc, char *argv[])
 			set_mac = optarg;
 			break;
 		case 'h':
+			print_help();
+			return EXIT_OK;
 		case '?':
 		default:
 			print_help();
-			exit (EXIT_OK);
-			break;
+			return EXIT_ERROR;
 		}
 	}
 
-	/* Read the MAC lists */
-	if (mc_maclist_init() < 0) {
-		exit (EXIT_ERROR);
-	}
+	if (mc_maclist_init() < 0)
+		return EXIT_ERROR;
 
-	/* Print list? */
 	if (print_list) {
 		mc_maclist_print(search_word);
-		exit (EXIT_OK);
+		ret = EXIT_OK;
+		goto cleanup;
 	}
 
-	/* Get device name argument */
 	if (optind >= argc) {
 		print_usage();
-		exit (EXIT_OK);
+		goto cleanup;
 	}
 	device_name = argv[optind];
 
-	/* Seed a random number generator */
-	random_seed();
+	modes = change_mode_count (random, ending, another_any, another_same, permanent, set_mac);
+	iface_wireless = mc_net_info_is_wireless (device_name);
 
-	/* Read the MAC */
-	if ((net = mc_net_info_new(device_name)) == NULL) {
-		exit (EXIT_ERROR);
-	}
+	if ((net = mc_net_info_new(device_name)) == NULL)
+		goto cleanup;
 	mac = mc_net_info_get_mac(net);
 	mac_permanent = mc_net_info_get_permanent_mac(net);
-
-	/* --bia can only be used with --random */
-	if (set_bia  &&  !random) {
-		fprintf (stderr, "[WARNING] Ignoring --bia option that can only be used with --random\n");
+	if (!mac) {
+		fprintf (stderr, "[ERROR] Out of memory\n");
+		goto cleanup;
 	}
 
-	/* Print the current MAC info */
-	print_mac ("Current MAC:   ", mac);
-	print_mac ("Permanent MAC: ", mac_permanent);
+	if (set_bia && !random)
+		fprintf (stderr, "[WARNING] Ignoring --bia option that can only be used with --random\n");
 
-	/* Change the MAC */
+	print_mac ("Current MAC:   ", mac, iface_wireless);
+	if (mac_permanent)
+		print_mac ("Permanent MAC: ", mac_permanent, iface_wireless);
+	else {
+		printf ("Permanent MAC: unavailable\n");
+		fflush (stdout);
+	}
+
+	if (show || modes == 0) {
+		ret = EXIT_OK;
+		goto cleanup;
+	}
+
+	if (modes > 1) {
+		fprintf (stderr, "[WARNING] Multiple change options given; only one is applied\n");
+	}
+
 	mac_faked = mc_mac_dup (mac);
+	if (!mac_faked) {
+		fprintf (stderr, "[ERROR] Out of memory\n");
+		goto cleanup;
+	}
 
-	if (show) {
-		exit (EXIT_OK);
-	} else if (set_mac) {
-		if (mc_mac_read_string (mac_faked, set_mac) < 0) {
-			exit (EXIT_ERROR);
+	if (set_mac) {
+		if (mc_mac_read_string (mac_faked, set_mac) < 0)
+			goto cleanup;
+		if (mac_faked->byte[0] & 0x01) {
+			fprintf (stderr, "[ERROR] Refusing a multicast MAC address\n");
+			goto cleanup;
 		}
+		explicit_same_ok = 1;
 	} else if (random) {
 		mc_mac_random (mac_faked, 6, set_bia);
 	} else if (ending) {
 		mc_mac_random (mac_faked, 3, 1);
 	} else if (another_same) {
-		val = mc_maclist_is_wireless (mac);
-		mc_maclist_set_random_vendor (mac_faked, val);
+		mc_maclist_set_random_vendor (mac_faked,
+			(iface_wireless || mc_maclist_is_wireless (mac)) ? mac_is_wireless : mac_is_others);
 		mc_mac_random (mac_faked, 3, 1);
 	} else if (another_any) {
 		mc_maclist_set_random_vendor(mac_faked, mac_is_anykind);
 		mc_mac_random (mac_faked, 3, 1);
 	} else if (permanent) {
-		mac_faked = mc_mac_dup (mac_permanent);
-	} else {
-		exit (EXIT_OK); /* default to show */
-	}
-
-	/* Set the new MAC */
-	ret = mc_net_info_set_mac (net, mac_faked);
-	if (ret == 0) {
-		/* Re-read the MAC */
-		mc_mac_free (mac_faked);
-		mac_faked = mc_net_info_get_mac(net);
-
-		/* Print it */
-		print_mac ("New MAC:       ", mac_faked);
-
-		/* Is the same MAC? */
-		if (mc_mac_equal (mac, mac_faked)) {
-			printf ("It's the same MAC!!\n");
+		if (!mac_permanent) {
+			fprintf (stderr, "[ERROR] Refusing to change the MAC because the permanent address is unavailable\n");
+			goto cleanup;
 		}
+		memcpy (mac_faked, mac_permanent, sizeof(*mac_faked));
+		explicit_same_ok = 1;
 	}
 
-	/* Memory free */
+	if (mc_mac_equal (mac, mac_faked)) {
+		printf ("It's the same MAC!!\n");
+		fflush (stdout);
+		ret = explicit_same_ok ? EXIT_OK : EXIT_ERROR;
+		goto cleanup;
+	}
+
+	if (mc_net_info_set_mac (net, mac_faked) < 0)
+		goto cleanup;
+
+	mac_now = mc_net_info_get_mac(net);
+	if (!mac_now) {
+		fprintf (stderr, "[ERROR] Out of memory\n");
+		goto cleanup;
+	}
+	print_mac ("New MAC:       ", mac_now, iface_wireless);
+	ret = EXIT_OK;
+
+cleanup:
 	mc_mac_free (mac);
 	mc_mac_free (mac_faked);
 	mc_mac_free (mac_permanent);
+	mc_mac_free (mac_now);
 	mc_net_info_free (net);
 	mc_maclist_free();
-
-	return (ret == 0) ? EXIT_OK : EXIT_ERROR;
+	return ret;
 }

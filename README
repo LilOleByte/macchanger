@@ -1,12 +1,45 @@
 GNU MAC Changer
 ===============
 
-GNU MAC Changer is an utility that makes the maniputation of MAC
-addresses of network interfaces easier.
+GNU MAC Changer makes it easier to view and change the MAC address of a
+network interface.
 
- - Web site: http://www.gnu.org/software/macchanger
- - Repository: http://github.com/alobbs/macchanger
+ - Web site: https://www.gnu.org/software/macchanger
+ - Repository: https://github.com/alobbs/macchanger
+ - Updates: byte@jvmlab.org
 
+Build and install it with the usual GNU autotools sequence:
+
+    ./autogen.sh
+    make
+    make check
+    make install
+
+`make install` installs the program, the vendor lists, and the man page.
+It uses /usr/local unless configure was given another --prefix. The Info
+manual source is doc/macchanger.texi; build it separately with makeinfo
+if that tool is installed.
+
+Changing an address needs permission to configure the interface, usually
+root. If the driver refuses the change while the interface is running,
+macchanger brings it down, changes the address, and restores the previous
+administrative state. It then reads the address back and exits with an
+error when the driver did not apply the new value.
+
+A fully random address (`-r`) is unicast and has the locally administered
+bit set, which is how IEEE 802 marks an address that was not assigned by
+the manufacturer. `--bia` clears that bit. The random bytes come from the
+kernel. `--another` keeps the same kind of interface: a wireless device,
+detected from sysfs, gets another wireless vendor. `-A` takes any vendor.
+
+NetworkManager may put the permanent address back when it activates a
+connection. To keep a chosen address, set that connection's cloned MAC
+address, or arrange for NetworkManager not to manage the device.
+
+The vendor list is regenerated from the IEEE registry with:
+
+    python3 tools/IEEE_OUI.py
 
 All the best,
 Alvaro Lopez Ortega <alvaro@alobbs.com>
+Updates: byte@jvmlab.org

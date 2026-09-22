@@ -1,4 +1,1 @@
-info_TEXINFOS = macchanger.texi
-macc_TEXINFOS = gpl.texi
-
-dvi:
+EXTRA_DIST = macchanger.texi

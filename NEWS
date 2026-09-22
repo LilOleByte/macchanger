@@ -1,0 +1,7 @@
+macchanger 1.8.0
+
+Updates: byte@jvmlab.org
+
+The address is read back after a change. Wireless interfaces are detected
+from sysfs, and --another keeps that kind of vendor. Random bytes come
+from the kernel. make install does not require makeinfo.

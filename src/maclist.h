@@ -41,6 +41,7 @@ void   mc_maclist_free  (void);
 const char * mc_maclist_get_cardname_with_default (const mac_t *, const char *);
 void         mc_maclist_set_random_vendor         (mac_t *, mac_type_t);
 int          mc_maclist_is_wireless               (const mac_t *);
+int          mc_maclist_keyword_matches           (const char *name, const char *keyword);
 void         mc_maclist_print                     (const char *keyword);
 
 #endif /* __MAC_CHANGER_LIST_H__ */

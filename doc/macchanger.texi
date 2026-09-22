@@ -9,8 +9,8 @@
 @include version.texi
 
 @copying
-This file documents the GNU @code{macchanger} command for printing a
-greeting message.
+This file documents the GNU @code{macchanger} command for viewing and
+changing the MAC address of network interfaces.
 
 Copyright (C) 2003,2013 Alvaro Lopez Ortega.
 
@@ -52,7 +52,7 @@ approved by the Foundation.
 
 @ifnottex
 @node Top
-@top Stress
+@top GNU Macchanger
 
 @end ifnottex
 
@@ -83,7 +83,7 @@ address of network interfaces.
 @item Set another MAC of the same vendor
 @item Set a MAC of the same kind (eg: wireless card)
 @item Reset MAC address to its original, permanent hardware value
-@item Display a vendor MAC list (more than 17000 items) to choose from
+@item Display a vendor MAC list to choose from
 @end itemize
 
 
@@ -124,9 +124,9 @@ Change the MAC address setting the same hardware vendor as the current.
 @cindex @code{-a}
 @itemx --another
 @cindex @code{--another}
-Change the MAC address setting a random vendor MAC of the same
-kind. For example, if it's a wireless card, @command{macchanger} will
-set another wireless MAC address.
+Change the MAC address to a random vendor of the same kind. A wireless
+interface gets another wireless vendor. Any other interface gets a
+non-wireless vendor.
 
 @item -A
 @cindex @code{-A}
@@ -148,8 +148,8 @@ Reset MAC address to its original, permanent hardware value.
 @cindex @code{-l}
 @itemx --list[=@var{keyword}]
 @cindex @code{--list}
-Print known vendors. If a key is spefified, @command{macchanger} will
-print only vendor that matches the string.
+Print known vendors. If a keyword is specified, @command{macchanger} will
+print only vendors whose description contains that word, ignoring case.
 
 @item -b
 @cindex @code{-b}
@@ -162,8 +162,8 @@ the MAC will have the locally-administered bit set.
 @cindex @code{-m}
 @itemx --mac=@var{XX:XX:XX:XX:XX:XX}
 @cindex @code{--mac}
-Set a specific MAC address. Each XX must be an hexadecial value (00 to
-FF).
+Set a specific MAC address. Each XX must be a hexadecimal value (00 to
+FF). Dashes are accepted in place of colons, as is a 12-digit hex string.
 
 @end table
 
@@ -180,7 +180,9 @@ another one of the same kind (for example, wireless):
 
 # @samp{macchanger -a wifi0}
 
-To execute this examples, the interface must be down, otherwise
-@command{macchanger} will be exit with an error message.
+If the driver refuses the change while the interface is running,
+@command{macchanger} brings it down, changes the address, and restores
+the previous administrative state. The command reads the address back
+afterwards and exits with an error if the driver did not apply it.
 
 @bye

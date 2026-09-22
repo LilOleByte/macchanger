@@ -64,7 +64,7 @@ rm -f aclocal.m4
 $ACLOCAL $ACLOCAL_FLAGS
 
 # Autoheader
-if grep "^AM_CONFIG_HEADER" configure.ac >/dev/null; then
+if grep -E "^(AM_CONFIG_HEADER|AC_CONFIG_HEADERS)" configure.ac >/dev/null; then
   echo "Running: autoheader..."
   $AUTOHEADER
 fi

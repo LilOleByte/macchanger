@@ -1,3 +1,49 @@
+2026-09-21  byte@jvmlab.org
+
+	* Released 1.8.0
+
+	* Verify the hardware address after changing it. A successful
+	ioctl is not enough: some drivers leave the old address in place.
+
+	* Bring an interface down when the kernel requires that, then
+	restore its previous administrative state.
+
+	* Do not report a permanent address of all zeros when the
+	permanent address cannot be read, and do not apply that value.
+
+	* Seed the random generator from getrandom or a non-blocking
+	device. Opening /dev/random could stall the process.
+
+	* Keep generating a random address until it differs from the
+	current one, and use the full byte range.
+
+	* --another on a non-wireless card selects another non-wireless
+	vendor. Setting an explicit address that is already in use
+	succeeds. Unknown options and a missing device exit with an error.
+
+	* Reject malformed vendor-list lines instead of reading off the
+	end of the buffer. Vendor search matches a whole word and ignores
+	case, so "Intel" does not match "Intelligent".
+
+	* Refresh the IEEE OUI list and teach the builder to run under
+	Python 3 against the current registry.
+
+	* Detect a wireless interface from sysfs. --another on that
+	interface chooses a wireless vendor, including vendors whose name
+	says so and the entries in wireless.list.
+
+	* Look vendor names up with a binary search instead of scanning
+	the whole OUI list for every query.
+
+	* Draw random address bytes from getrandom or /dev/urandom.
+
+	* Do not require makeinfo to build or install. The man page is
+	installed with the program. The Info manual remains in
+	doc/macchanger.texi for makeinfo.
+
+	* Updates: byte@jvmlab.org
+
+
 2004-05-10  Alvaro Lopez Ortega  <alvaro@gnu.org>
 
 	* data/OUI.list: 513 addresses updated.

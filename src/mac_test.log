@@ -1,0 +1,5 @@
+[ERROR] Incorrect format: MAC length should be 17 or 12. 00:11:22:33:44(14)
+[ERROR] Incorrect format: 00:11-22:33:44:55
+[ERROR] Incorrect format: 00:11:22:33:44:GG
+[ERROR] Incorrect format: missing MAC address
+PASS mac_test (exit status: 0)

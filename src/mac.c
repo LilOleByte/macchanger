@@ -24,9 +24,21 @@
  */
 
 
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
+
+#include <ctype.h>
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#ifdef HAVE_SYS_RANDOM_H
+# include <sys/random.h>
+#endif
 
 #include "mac.h"
 
@@ -37,7 +49,8 @@ mc_mac_dup (const mac_t *mac)
 	mac_t *new;
 
 	new = (mac_t *)malloc(sizeof(mac_t));
-	memcpy (new, mac, sizeof(mac_t));
+	if (new)
+		memcpy (new, mac, sizeof(mac_t));
 	return new;
 }
 
@@ -52,42 +65,93 @@ mc_mac_free (mac_t *mac)
 void
 mc_mac_into_string (const mac_t *mac, char *s)
 {
-	int i;
+	snprintf (s, 18, "%02x:%02x:%02x:%02x:%02x:%02x",
+		  mac->byte[0], mac->byte[1], mac->byte[2],
+		  mac->byte[3], mac->byte[4], mac->byte[5]);
+}
 
-	for (i=0; i<6; i++) {
-		sprintf (&s[i*3], "%02x%s", mac->byte[i], i<5?":":"");
+
+static int
+fill_random (unsigned char *dst, size_t len)
+{
+	size_t got = 0;
+
+#if defined(HAVE_GETRANDOM) && defined(HAVE_SYS_RANDOM_H)
+	if (getrandom (dst, len, 0) == (ssize_t)len)
+		return 0;
+#endif
+
+	{
+		int fd = open ("/dev/urandom", O_RDONLY);
+		if (fd >= 0) {
+			while (got < len) {
+				ssize_t n = read (fd, dst + got, len - got);
+				if (n <= 0)
+					break;
+				got += (size_t)n;
+			}
+			close (fd);
+			if (got == len)
+				return 0;
+		}
 	}
+
+	for (got = 0; got < len; got++)
+		dst[got] = (unsigned char)(random() & 0xFF);
+	return 0;
+}
+
+
+unsigned
+mc_random_uniform (unsigned n)
+{
+	unsigned char buf[4];
+	uint32_t      value;
+	uint32_t      limit;
+
+	if (n <= 1)
+		return 0;
+
+	/* Reject values that would bias the modulo. */
+	limit = (UINT32_MAX / (uint32_t)n) * (uint32_t)n;
+	do {
+		fill_random (buf, sizeof(buf));
+		memcpy (&value, buf, sizeof(value));
+	} while (value >= limit);
+
+	return (unsigned)(value % (uint32_t)n);
 }
 
 
 void
 mc_mac_random (mac_t *mac, unsigned char last_n_bytes, char set_bia)
 {
-	/* The LSB of first octet can not be set.  Those are musticast
-	 * MAC addresses and not allowed for network device:
-	 * x1:, x3:, x5:, x7:, x9:, xB:, xD: and xF:
-	 */
+	mac_t orig;
+	int   attempt;
+	int   start;
 
-	switch (last_n_bytes) {
-	case 6:
-		/* 8th bit: Unicast / Multicast address
-		 * 7th bit: BIA (burned-in-address) / locally-administered
-		 */
-		mac->byte[0] = (random()%255) & 0xFC;
-		mac->byte[1] = random()%255;
-		mac->byte[2] = random()%255;
-	case 3:
-		mac->byte[3] = random()%255;
-		mac->byte[4] = random()%255;
-		mac->byte[5] = random()%255;
-	}
-
-	/* Handle the burned-in-address bit
+	/* Bit 0 of the first octet is the unicast/multicast bit and must
+	 * stay clear. Bit 1 is the local/universal bit: set for a random
+	 * address, clear when pretending to be a burned-in address.
+	 * Randomizing only the ending must leave the vendor bytes alone.
 	 */
-	if (set_bia) {
-		mac->byte[0] &= ~2;
-	} else {
-		mac->byte[0] |= 2;
+	if (last_n_bytes != 3 && last_n_bytes != 6)
+		return;
+
+	memcpy (&orig, mac, sizeof(orig));
+	start = 6 - last_n_bytes;
+
+	for (attempt = 0; attempt < 16; attempt++) {
+		fill_random (mac->byte + start, (size_t)(6 - start));
+
+		if (last_n_bytes == 6) {
+			mac->byte[0] &= 0xFC;
+			if (!set_bia)
+				mac->byte[0] |= 0x02;
+		}
+
+		if (!mc_mac_equal (&orig, mac))
+			return;
 	}
 }
 
@@ -106,28 +170,73 @@ mc_mac_equal (const mac_t *mac1, const mac_t *mac2)
 }
 
 
-int
-mc_mac_read_string (mac_t *mac, char *string)
+static int
+read_hex_byte (const char *text, unsigned int *value)
 {
-	int nbyte = 5;
+	char tmp[3];
+	char *end;
 
-	/* Check the format */
-	if (strlen(string) != 17) {
-		fprintf (stderr, "[ERROR] Incorrect format: MAC length should be 17. %s(%lu)\n", string, strlen(string));
+	if (!isxdigit ((unsigned char)text[0]) ||
+	    !isxdigit ((unsigned char)text[1]))
+		return -1;
+
+	tmp[0] = text[0];
+	tmp[1] = text[1];
+	tmp[2] = '\0';
+	*value = (unsigned int)strtoul (tmp, &end, 16);
+	if (*end != '\0' || *value > 0xFF)
+		return -1;
+	return 0;
+}
+
+
+int
+mc_mac_read_string (mac_t *mac, const char *string)
+{
+	unsigned int bytes[6];
+	size_t       length;
+	char         separator = 0;
+	int          nbyte;
+
+	if (!string) {
+		fprintf (stderr, "[ERROR] Incorrect format: missing MAC address\n");
 		return -1;
 	}
 
-	for (nbyte=2; nbyte<16; nbyte+=3) {
-		if (string[nbyte] != ':') {
+	length = strlen (string);
+	if (length == 17) {
+		separator = string[2];
+		if (separator != ':' && separator != '-') {
 			fprintf (stderr, "[ERROR] Incorrect format: %s\n", string);
 			return -1;
 		}
+		for (nbyte = 2; nbyte < 16; nbyte += 3) {
+			if (string[nbyte] != separator) {
+				fprintf (stderr, "[ERROR] Incorrect format: %s\n", string);
+				return -1;
+			}
+		}
+		for (nbyte = 0; nbyte < 6; nbyte++) {
+			if (read_hex_byte (string + (nbyte * 3), &bytes[nbyte]) < 0) {
+				fprintf (stderr, "[ERROR] Incorrect format: %s\n", string);
+				return -1;
+			}
+		}
+	} else if (length == 12) {
+		for (nbyte = 0; nbyte < 6; nbyte++) {
+			if (read_hex_byte (string + (nbyte * 2), &bytes[nbyte]) < 0) {
+				fprintf (stderr, "[ERROR] Incorrect format: %s\n", string);
+				return -1;
+			}
+		}
+	} else {
+		fprintf (stderr, "[ERROR] Incorrect format: MAC length should be 17 or 12. %s(%lu)\n",
+			 string, (unsigned long)length);
+		return -1;
 	}
 
-	/* Read the values */
-	for (nbyte=0; nbyte<6; nbyte++) {
-		mac->byte[nbyte] = (char) (strtoul(string+nbyte*3, 0, 16) & 0xFF);
-	}
+	for (nbyte = 0; nbyte < 6; nbyte++)
+		mac->byte[nbyte] = (unsigned char)bytes[nbyte];
 
 	return 0;
 }
